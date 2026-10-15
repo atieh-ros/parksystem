@@ -902,7 +902,22 @@ void setup() {
   server.begin();
 }
 
+// Status ausgeben, sobald ein serieller Monitor verbunden wird (die Startmeldungen sind dann schon weg)
+void seriellerStatus() {
+  static bool warVerbunden = false;
+  bool verbunden = (bool)Serial;
+  if (verbunden && !warVerbunden) {
+    Serial.println("Parksystem Pico 2 (Schranken), Firmware " + String(FIRMWARE_VERSION));
+    Serial.println("WLAN " + String(WLAN_SSID) + ", Kamera-Simulation unter http://192.168.42.1/");
+    Serial.println("LittleFS: " + String(fsOk ? "ok" : "nicht verfügbar") + ", " + anzeigeText() +
+                   ", Uhrzeit: " + (uhr.gueltig ? zeitText(uhr.jetzt()) : String("nicht gesetzt")) +
+                   ", Pico 1: " + (pico1Online() ? pico1Ip.toString() : String("nicht erreichbar")));
+  }
+  warVerbunden = verbunden;
+}
+
 void loop() {
+  seriellerStatus();
   server.handleClient();
   schrankenAktualisieren();
   synchronisiere();
