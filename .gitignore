@@ -1,2 +1,5 @@
 .pio/
 .vscode/
+# von PlatformIO automatisch erzeugt
+pico1_kasse/.gitignore
+pico2_schranken/.gitignore
