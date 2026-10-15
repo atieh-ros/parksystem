@@ -17,7 +17,7 @@ Das System besteht aus zwei Raspberry Pi Pico W, die über WLAN miteinander spre
 |---|---|---|
 | Sketch | [`pico1_kasse/`](pico1_kasse/pico1_kasse.ino) | [`pico2_schranken/`](pico2_schranken/pico2_schranken.ino) |
 | Weboberfläche | Kassenautomat: Kennzeichen eingeben, Betrag anzeigen, bezahlen (Karte / TWINT / Bargeld simuliert), Quittung optional | Kamera-Simulation für Einfahrt und Ausfahrt, Anzeige freie Plätze, Admin-Panel |
-| Hardware | – | Servo Einfahrt an GP8, Servo Ausfahrt an GP9 |
+| Hardware | Servo Ausfahrt an GP8 | Servo Einfahrt an GP8 |
 | Daten | Parkvorgänge mit Einfahrtszeit und Zahlungen | Offene Parkvorgänge, Archiv, Logbuch |
 
 Pico 2 spannt das Test-WLAN als Access Point auf. Pico 1 verbindet sich damit und meldet sich alle 5 Sekunden bei Pico 2. So kennt Pico 2 die Adresse der Kasse, und die Uhren der beiden Picos werden abgeglichen.
@@ -26,7 +26,7 @@ Pico 2 spannt das Test-WLAN als Access Point auf. Pico 1 verbindet sich damit un
 
 1. **Einfahrt:** In der Kamera-Simulation wird das Kennzeichen eingetippt. Pico 2 prüft es, speichert Kennzeichen und Einfahrtszeit, öffnet die Einfahrtsschranke (Servo) und meldet die Einfahrt an Pico 1.
 2. **Kasse:** Am Kassenautomaten (Pico 1) gibt der Gast sein Kennzeichen ein. Der Betrag wird berechnet (CHF 1.50 pro angebrochene 15 Minuten). Nach der Zahlung gilt das Kennzeichen 15 Minuten als «bezahlt» (Karenzzeit). Danach kann eine Quittung angezeigt werden.
-3. **Ausfahrt:** In der Kamera-Simulation wird das Kennzeichen an der Ausfahrt eingetippt. Pico 2 fragt bei Pico 1 den Bezahlstatus ab. Nur bei «bezahlt» innerhalb der Karenzzeit öffnet die Ausfahrtsschranke, und der Parkvorgang wird archiviert. Sonst bleibt sie zu und das Display zeigt «Parkgebühr nicht bezahlt. Bitte zum Automaten.»
+3. **Ausfahrt:** In der Kamera-Simulation wird das Kennzeichen an der Ausfahrt eingetippt. Pico 2 fragt bei Pico 1 den Bezahlstatus ab. Nur bei «bezahlt» innerhalb der Karenzzeit öffnet die Ausfahrtsschranke (Pico 2 schickt Pico 1 den Befehl, dessen Servo zu öffnen), und der Parkvorgang wird archiviert. Sonst bleibt sie zu und das Display zeigt «Parkgebühr nicht bezahlt. Bitte zum Automaten.»
 4. Die Schranken schliessen nach 5 Sekunden automatisch. Während eine Schranke offen ist, leuchtet die LED auf Pico 2.
 
 **Uhrzeit:** Der Pico hat keine Echtzeituhr und im Test-WLAN gibt es kein Internet (kein NTP). Beim ersten Aufruf einer Weboberfläche übernimmt der Pico deshalb die Uhrzeit des Browsers. Pico 2 ist die Referenzuhr, Pico 1 übernimmt die Zeit von Pico 2. Nach einem Neustart von Pico 2 holt sich Pico 2 die Zeit von Pico 1 zurück.
@@ -64,18 +64,21 @@ Die Werte stehen als Konstanten oben in den beiden Sketches bzw. in [`tarif.h`](
 ## Hardware und Verdrahtung
 
 - 2 × Raspberry Pi Pico W
-- 2 × Servo SG90 (Einfahrt und Ausfahrt), beide an **Pico 2**
+- 2 × Servo SG90: Einfahrt an **Pico 2**, Ausfahrt an **Pico 1**
 
-| SG90 | Pico 2 |
+Beide Picos sind gleich verdrahtet:
+
+| SG90 | Pico |
 |---|---|
 | rot (VCC) | VBUS, Pin 40 (5 V) |
-| braun (GND) | GND, z.B. Pin 8 |
-| orange (Signal) Einfahrt | GP8, Pin 11 |
-| orange (Signal) Ausfahrt | GP9, Pin 12 |
+| braun (GND) | GND, Pin 8 |
+| orange (Signal) | GP8, Pin 11 |
 
-Pico 1 braucht keine zusätzliche Hardware, nur Strom über USB. Die Pins lassen sich oben in `pico2_schranken.ino` ändern (`PIN_SERVO_EINFAHRT`, `PIN_SERVO_AUSFAHRT`, `WINKEL_ZU`, `WINKEL_OFFEN`).
+Die Ausfahrtsschranke an Pico 1 öffnet nur auf Befehl von Pico 2 (`/api/schranke`). Alternativ kann der Ausfahrts-Servo auch an Pico 2 (GP9, Pin 12) hängen, Pico 2 steuert beide Varianten an. Ist Pico 1 nicht erreichbar, kann die Ausfahrt dann nur noch über GP9 von Pico 2 geöffnet werden.
 
-![Aufbau Pico 2 mit Servo](docs/aufbau.jpeg)
+Schranke zu = 90°, offen = 0° (`WINKEL_ZU`, `WINKEL_OFFEN` oben in beiden Sketches). Steht der Arm bei «zu» nicht waagrecht, den Arm vom Servo abziehen und waagrecht wieder aufstecken. Dreht er beim Öffnen in die falsche Richtung, `WINKEL_OFFEN` auf 180 setzen.
+
+![Aufbau eines Picos mit Servo](docs/aufbau.jpeg)
 
 ## Installation
 
@@ -113,6 +116,7 @@ Alle Anfragen sind einfache HTTP-GET-Anfragen mit dem gemeinsamen Schlüssel `ke
 | Pico 2 → Pico 1 | `/api/status?kz=..` | `status=bezahlt` / `offen` / `abgelaufen` / `unbekannt`, `bezahlt=..`, `rappen=..` |
 | Pico 2 → Pico 1 | `/api/ausfahrt?kz=..` | `ok` |
 | Pico 2 → Pico 1 | `/api/reset` | `ok` |
+| Pico 2 → Pico 1 | `/api/schranke` (Ausfahrtsschranke öffnen) | `ok` |
 
 Kann eine Einfahrt nicht sofort an Pico 1 gemeldet werden (z.B. WLAN-Unterbruch), liefert Pico 2 sie automatisch nach. Im Admin-Panel steht pro Parkvorgang, ob er schon übermittelt wurde.
 
@@ -122,11 +126,11 @@ Kann eine Einfahrt nicht sofort an Pico 1 gemeldet werden (z.B. WLAN-Unterbruch)
 parksystem/
 ├── README.md
 ├── pico1_kasse/
-│   ├── pico1_kasse.ino      Kasse, Schnittstelle für Pico 2
+│   ├── pico1_kasse.ino      Kasse, Ausfahrtsschranke, Schnittstelle für Pico 2
 │   ├── tarif.h              Tarif- und Karenzzeitberechnung
 │   └── kennzeichen.h        Kennzeichen normalisieren (identisch mit Pico 2)
 ├── pico2_schranken/
-│   ├── pico2_schranken.ino  Schranken, Kamera-Simulation, Anzeige, Admin-Panel
+│   ├── pico2_schranken.ino  Einfahrtsschranke, Kamera-Simulation, Anzeige, Admin-Panel
 │   └── kennzeichen.h        Kennzeichen normalisieren und prüfen
 └── docs/
     ├── Testkonzept_Parksystem_v1.1.pdf

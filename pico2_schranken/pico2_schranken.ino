@@ -11,9 +11,8 @@
   Pico 1 (Kasse) verbindet sich damit und meldet sich regelmässig über /api/hello.
 
   Verdrahtung (siehe README):
-    Servo Einfahrt  Signal -> GP8 (Pin 11)
-    Servo Ausfahrt  Signal -> GP9 (Pin 12)
-    beide Servos    VCC -> VBUS (Pin 40), GND -> GND (z.B. Pin 8)
+    Servo Einfahrt  Signal -> GP8 (Pin 11), VCC -> VBUS (Pin 40), GND -> GND (Pin 8)
+    Servo Ausfahrt  hängt an Pico 1 (GP8). Alternativ an Pico 2, Signal -> GP9 (Pin 12).
 */
 
 #include <WiFi.h>
@@ -35,8 +34,9 @@ const char* ADMIN_PASSWORT = "Park2026!";
 
 const int PIN_SERVO_EINFAHRT = 8;  // GP8 = Pin 11
 const int PIN_SERVO_AUSFAHRT = 9;  // GP9 = Pin 12
-const int WINKEL_ZU = 0;
-const int WINKEL_OFFEN = 90;
+// Schranke zu = 90° (Mitte), offen = 0°. Dreht sie falsch herum, WINKEL_OFFEN auf 180 setzen.
+const int WINKEL_ZU = 90;
+const int WINKEL_OFFEN = 0;
 const uint32_t OFFEN_DAUER_MS = 5000;     // Schranke schliesst nach der Durchfahrt automatisch
 const uint32_t MELDUNG_DAUER_MS = 15000;  // so lange bleibt eine Meldung auf dem Display
 const uint32_t PICO1_ONLINE_MS = 15000;   // Pico 1 gilt als erreichbar, wenn er sich so kürzlich gemeldet hat
@@ -471,6 +471,13 @@ void synchronisiere() {
   }
 }
 
+// Der Ausfahrts-Servo kann an Pico 2 (GP9) oder an Pico 1 (GP8) hängen: beide ansteuern
+void oeffneAusfahrt() {
+  oeffne(schrankeAus);
+  String egal;
+  if (pico1Online()) pico1Anfrage("/api/schranke", egal);
+}
+
 // ---------- Admin-Login ----------
 bool eingeloggt() {
   String cookie = server.header("Cookie");
@@ -650,7 +657,7 @@ void aktionAusfahrt() {
     anzahlOffen--;
     speichereOffen();
     archiviere(p, strtoul(wert(antwort, "bezahlt").c_str(), nullptr, 10), atol(wert(antwort, "rappen").c_str()));
-    oeffne(schrankeAus);
+    oeffneAusfahrt();
     zeige(displayAus, "Gute Fahrt! Schranke offen.", "ok");
     String egal;
     pico1Anfrage("/api/ausfahrt?kz=" + urlEncode(kz), egal);
@@ -783,7 +790,7 @@ void aktionManuellOeffnen() {
     protokolliere(ADMIN_BENUTZER, "manuelle Öffnung Einfahrt");
     weiterleiten("/admin?msg=einfahrt");
   } else if (schranke == "ausfahrt") {
-    oeffne(schrankeAus);
+    oeffneAusfahrt();
     protokolliere(ADMIN_BENUTZER, "manuelle Öffnung Ausfahrt");
     weiterleiten("/admin?msg=ausfahrt");
   } else {

@@ -11,6 +11,9 @@
     - Pico 2 fragt bei der Ausfahrt      GET /api/status?kz=..
     - Pico 2 meldet die Ausfahrt         GET /api/ausfahrt?kz=..
     - Reset aus dem Admin-Panel          GET /api/reset
+    - Ausfahrtsschranke öffnen           GET /api/schranke
+  Der Servo der Ausfahrtsschranke hängt an Pico 1 (Signal GP8 = Pin 11).
+  Pico 1 entscheidet nicht selbst, wann er öffnet: das macht Pico 2.
   Pico 1 verbindet sich mit dem WLAN, das Pico 2 aufspannt, und meldet sich
   alle 5 Sekunden bei Pico 2 (/api/hello). Dabei wird die Uhrzeit abgeglichen.
 */
@@ -19,6 +22,7 @@
 #include <WebServer.h>
 #include <HTTPClient.h>
 #include <LittleFS.h>
+#include <Servo.h>
 #include <time.h>
 #include "tarif.h"
 #include "kennzeichen.h"
@@ -33,6 +37,11 @@ const uint32_t HELLO_INTERVALL_MS = 5000;
 const uint32_t WLAN_NEUVERSUCH_MS = 10000;
 const uint16_t HTTP_TIMEOUT_MS = 1500;
 const int MAX_VORGAENGE = 30;
+const int PIN_SERVO_AUSFAHRT = 8;  // GP8 = Pin 11
+// Schranke zu = 90° (Mitte), offen = 0°. Dreht sie falsch herum, WINKEL_OFFEN auf 180 setzen.
+const int WINKEL_ZU = 90;
+const int WINKEL_OFFEN = 0;
+const uint32_t OFFEN_DAUER_MS = 5000;
 
 // ---------- Datentypen ----------
 struct Uhr {
@@ -74,6 +83,9 @@ uint32_t letzterHello = 0;
 bool helloGesendet = false;
 uint32_t letzterWlanVersuch = 0;
 bool wlanWarVerbunden = false;
+Servo servoAusfahrt;
+bool ausfahrtOffen = false;
+uint32_t ausfahrtSeit = 0;
 
 const char* CSS =
   "body{font-family:system-ui,Segoe UI,sans-serif;background:#f3f4f6;color:#111;margin:0}"
@@ -494,6 +506,23 @@ void apiReset() {
   server.send(200, "text/plain", "ok\n");
 }
 
+void apiSchranke() {
+  if (!apiErlaubt()) return;
+  servoAusfahrt.write(WINKEL_OFFEN);
+  ausfahrtOffen = true;
+  ausfahrtSeit = millis();
+  Serial.println("Ausfahrtsschranke offen");
+  server.send(200, "text/plain", "ok\n");
+}
+
+void schrankeAktualisieren() {
+  if (ausfahrtOffen && millis() - ausfahrtSeit >= OFFEN_DAUER_MS) {
+    servoAusfahrt.write(WINKEL_ZU);
+    ausfahrtOffen = false;
+    Serial.println("Ausfahrtsschranke geschlossen");
+  }
+}
+
 void apiSetTime() {
   // Nur als Fallback, wenn Pico 2 noch keine Zeit geliefert hat
   if (uhr.gueltig) {
@@ -559,6 +588,9 @@ void setup() {
   delay(500);
   Serial.println("Parksystem Pico 1 (Kasse) startet");
 
+  servoAusfahrt.attach(PIN_SERVO_AUSFAHRT, 500, 2400);
+  servoAusfahrt.write(WINKEL_ZU);
+
   fsOk = LittleFS.begin();
   if (!fsOk) Serial.println("WARNUNG: LittleFS nicht verfügbar (Flash Size mit FS wählen). Daten nur im RAM.");
   lade();
@@ -573,6 +605,7 @@ void setup() {
   server.on("/api/status", apiStatus);
   server.on("/api/ausfahrt", apiAusfahrt);
   server.on("/api/reset", apiReset);
+  server.on("/api/schranke", apiSchranke);
   server.on("/api/settime", apiSetTime);
   server.onNotFound([]() { server.send(404, "text/plain", "Nicht gefunden"); });
 
@@ -584,5 +617,6 @@ void setup() {
 void loop() {
   wlanPruefen();
   server.handleClient();
+  schrankeAktualisieren();
   hello();
 }
