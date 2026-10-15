@@ -878,6 +878,9 @@ void setup() {
   ladeAlles();
   Serial.printf("%d offene Parkvorgänge geladen\n", anzahlOffen);
 
+  // IP fest setzen: je nach Version des Pico-Cores ist der Standard 192.168.4.1 oder 192.168.42.1
+  WiFi.mode(WIFI_AP);
+  WiFi.softAPConfig(IPAddress(192, 168, 42, 1), IPAddress(192, 168, 42, 1), IPAddress(255, 255, 255, 0));
   WiFi.beginAP(WLAN_SSID, WLAN_PASSWORT);
   Serial.print("Access Point ");
   Serial.print(WLAN_SSID);
