@@ -1,0 +1,7 @@
+{
+  "folders": [
+    { "name": "Pico 1 – Kasse", "path": "pico1_kasse" },
+    { "name": "Pico 2 – Schranken", "path": "pico2_schranken" },
+    { "name": "Projekt", "path": "." }
+  ]
+}

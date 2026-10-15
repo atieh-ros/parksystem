@@ -90,6 +90,8 @@ Schranke zu = 90°, offen = 0° (`WINKEL_ZU`, `WINKEL_OFFEN` oben in beiden Sket
 5. Unter *Werkzeuge → Flash Size* eine Variante **mit FS** wählen (z.B. «2MB (Sketch: 1MB, FS: 1MB)»). Sonst funktioniert die Speicherung nicht.
 6. `pico2_schranken/pico2_schranken.ino` auf den Pico mit den Servos laden, `pico1_kasse/pico1_kasse.ino` auf den anderen Pico.
 
+**Alternative: VS Code mit PlatformIO.** `parksystem.code-workspace` öffnen (*Datei → Arbeitsbereich aus Datei öffnen*). Jeder Sketch-Ordner hat eine eigene `platformio.ini`. Mit «Upload» in der PlatformIO-Leiste wird der Sketch des gewählten Ordners auf den Pico geladen.
+
 ## Bedienung
 
 1. Pico 2 zuerst einschalten. Er erstellt das WLAN **`Parksystem-TEST`** (Passwort `parken2026`).
