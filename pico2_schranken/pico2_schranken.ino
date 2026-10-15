@@ -533,17 +533,20 @@ String fuss() {
 }
 
 // Aktualisiert Anzeige, Displays und Schrankenstatus jede Sekunde
-const char* STATUS_SKRIPT = R"(<script>
-function setze(id,text,klasse){var e=document.getElementById(id);if(!e)return;e.textContent=text;if(klasse!==undefined)e.className=klasse;}
-function aktualisiere(){fetch('/api/state').then(function(r){return r.json()}).then(function(s){
-setze('anzeige',s.voll?'Besetzt':'Freie Plätze: '+s.frei,'anzeige'+(s.voll?' voll':'')+(document.body.dataset.gross?' gross':''));
-setze('dispEin',s.dispEin,'display '+s.klEin);
-setze('dispAus',s.dispAus,'display '+s.klAus);
-setze('schEin',s.ein?'Schranke offen':'Schranke geschlossen',s.ein?'offen':'zu');
-setze('schAus',s.aus?'Schranke offen':'Schranke geschlossen',s.aus?'offen':'zu');
-}).catch(function(){});}
-setInterval(aktualisiere,1000);
-</script>)";
+// (normale Stringliterale statt Raw-String: der .ino-Konverter hält "function" sonst für C++)
+const char* STATUS_SKRIPT =
+  "<script>"
+  "var setze=function(id,text,klasse){var e=document.getElementById(id);if(!e)return;e.textContent=text;"
+  "if(klasse!==undefined)e.className=klasse;};"
+  "var aktualisiere=function(){fetch('/api/state').then(function(r){return r.json()}).then(function(s){"
+  "setze('anzeige',s.voll?'Besetzt':'Freie Plätze: '+s.frei,'anzeige'+(s.voll?' voll':'')+(document.body.dataset.gross?' gross':''));"
+  "setze('dispEin',s.dispEin,'display '+s.klEin);"
+  "setze('dispAus',s.dispAus,'display '+s.klAus);"
+  "setze('schEin',s.ein?'Schranke offen':'Schranke geschlossen',s.ein?'offen':'zu');"
+  "setze('schAus',s.aus?'Schranke offen':'Schranke geschlossen',s.aus?'offen':'zu');"
+  "}).catch(function(){});};"
+  "setInterval(aktualisiere,1000);"
+  "</script>";
 
 void sendeSeite(const String& h) {
   server.send(200, "text/html; charset=utf-8", h);
@@ -880,8 +883,7 @@ void setup() {
   Serial.print(WLAN_SSID);
   Serial.println(" bereit, Kamera-Simulation unter http://192.168.42.1/");
 
-  const char* kopfzeilen[] = {"Cookie"};
-  server.collectHeaders(kopfzeilen, 1);
+  server.collectHeaders("Cookie");
 
   server.on("/", seiteKamera);
   server.on("/anzeige", seiteAnzeige);
