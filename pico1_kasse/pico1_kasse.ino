@@ -32,7 +32,11 @@ const char* WLAN_SSID = "Parksystem-TEST";
 const char* WLAN_PASSWORT = "parken2026";
 const char* API_KEY = "m450-parksystem";
 const char* PICO2_ADRESSE = "192.168.42.1";  // Standard-IP des Access Points von Pico 2
-const char* FIRMWARE_VERSION = "1.0.0";
+// Feste IP für die Kasse (F-001, Testkonzept 3.1: feste IP-Adressen im Test-WLAN)
+const IPAddress KASSE_IP(192, 168, 42, 2);
+const IPAddress GATEWAY_IP(192, 168, 42, 1);
+const IPAddress SUBNETZ(255, 255, 255, 0);
+const char* FIRMWARE_VERSION = "1.1.0";
 const uint32_t HELLO_INTERVALL_MS = 5000;
 const uint32_t WLAN_NEUVERSUCH_MS = 10000;
 const uint16_t HTTP_TIMEOUT_MS = 1500;
@@ -158,7 +162,7 @@ String feld(const String& zeile, int nummer) {
   return zeile.substring(start, ende);
 }
 
-String zeitText(uint32_t epoch, bool mitDatum) {
+String zeitText(uint32_t epoch, bool mitDatum, bool mitSekunden = false) {
   if (epoch == 0) return "-";
   time_t t = (time_t)epoch + (time_t)uhr.tzMinuten * 60;
   struct tm z;
@@ -167,6 +171,8 @@ String zeitText(uint32_t epoch, bool mitDatum) {
   if (mitDatum) {
     snprintf(buf, sizeof(buf), "%02d.%02d.%04d %02d:%02d:%02d", z.tm_mday, z.tm_mon + 1, z.tm_year + 1900,
              z.tm_hour, z.tm_min, z.tm_sec);
+  } else if (mitSekunden) {
+    snprintf(buf, sizeof(buf), "%02d:%02d:%02d", z.tm_hour, z.tm_min, z.tm_sec);
   } else {
     snprintf(buf, sizeof(buf), "%02d:%02d", z.tm_hour, z.tm_min);
   }
@@ -331,7 +337,8 @@ void seiteBetrag() {
   h += "</table>";
 
   if (offen == 0) {
-    h += "<p class='msg ok'>Bezahlt, Ausfahrt bis " + zeitText(v.bezahltUm + tarif::KARENZ_SEKUNDEN, false) + "</p>";
+    h += "<p class='msg ok'>Bezahlt, Ausfahrt bis " + zeitText(v.bezahltUm + tarif::KARENZ_SEKUNDEN, false, true) + "</p>";
+    h += "<p>Bezahlt um " + zeitText(v.bezahltUm, false, true) + "</p>";
     h += "<a class='knopf' href='/quittung?kz=" + urlEncode(v.kz) + "'>Quittung anzeigen</a>";
     h += "<a class='knopf grau' href='/'>Fertig</a></div>";
     h += fuss();
@@ -402,7 +409,8 @@ void seiteBezahlt() {
   const Vorgang& v = vorgaenge[i];
   String h = kopf("Kasse");
   h += "<h1>Kassenautomat</h1><div class='karte'>";
-  h += "<p class='msg ok'>Bezahlt, Ausfahrt bis " + zeitText(v.bezahltUm + tarif::KARENZ_SEKUNDEN, false) + "</p>";
+  h += "<p class='msg ok'>Bezahlt, Ausfahrt bis " + zeitText(v.bezahltUm + tarif::KARENZ_SEKUNDEN, false, true) + "</p>";
+  h += "<p>Bezahlt um " + zeitText(v.bezahltUm, false, true) + "</p>";
   h += "<p>Quittung drucken?</p>";
   h += "<a class='knopf' href='/quittung?kz=" + urlEncode(v.kz) + "'>Ja</a>";
   h += "<a class='knopf grau' href='/?msg=danke'>Nein</a></div>";
@@ -423,11 +431,11 @@ void seiteQuittung() {
   h += "<tr><td colspan='2'><b>Parkhaus M450</b></td></tr>";
   h += "<tr><td>Kennzeichen</td><td>" + html(v.kz) + "</td></tr>";
   h += "<tr><td>Datum</td><td>" + datumText(v.bezahltUm) + "</td></tr>";
-  h += "<tr><td>Uhrzeit Zahlung</td><td>" + zeitText(v.bezahltUm, false) + "</td></tr>";
+  h += "<tr><td>Uhrzeit Zahlung</td><td>" + zeitText(v.bezahltUm, false, true) + "</td></tr>";
   h += "<tr><td>Einfahrt</td><td>" + zeitText(v.einfahrt, true) + "</td></tr>";
   h += "<tr><td>Zahlungsmittel</td><td>" + html(v.zahlart) + "</td></tr>";
   h += "<tr><td>Betrag</td><td><b>" + geld(v.bezahltRappen) + "</b></td></tr>";
-  h += "<tr><td>Ausfahrt bis</td><td>" + zeitText(v.bezahltUm + tarif::KARENZ_SEKUNDEN, false) + "</td></tr>";
+  h += "<tr><td>Ausfahrt bis</td><td>" + zeitText(v.bezahltUm + tarif::KARENZ_SEKUNDEN, false, true) + "</td></tr>";
   h += "</table></div>";
   h += "<button onclick='window.print()'>Drucken</button><a class='knopf grau' href='/?msg=danke'>Fertig</a>";
   h += fuss();
@@ -579,6 +587,7 @@ void wlanPruefen() {
   if (millis() - letzterWlanVersuch < WLAN_NEUVERSUCH_MS) return;
   letzterWlanVersuch = millis();
   Serial.println("Verbinde mit WLAN " + String(WLAN_SSID) + " ...");
+  WiFi.config(KASSE_IP, GATEWAY_IP, GATEWAY_IP, SUBNETZ);
   WiFi.begin(WLAN_SSID, WLAN_PASSWORT);
 }
 
@@ -610,6 +619,7 @@ void setup() {
   server.onNotFound([]() { server.send(404, "text/plain", "Nicht gefunden"); });
 
   letzterWlanVersuch = millis();
+  WiFi.config(KASSE_IP, GATEWAY_IP, GATEWAY_IP, SUBNETZ);
   WiFi.begin(WLAN_SSID, WLAN_PASSWORT);
   server.begin();
 }
