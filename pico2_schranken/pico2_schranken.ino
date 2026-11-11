@@ -27,13 +27,16 @@
 const char* WLAN_SSID = "Parksystem-TEST";
 const char* WLAN_PASSWORT = "parken2026";
 const char* API_KEY = "m450-parksystem";
-const char* FIRMWARE_VERSION = "1.0.0";
+const char* FIRMWARE_VERSION = "1.1.0";
 const int KAPAZITAET = 5;
 const char* ADMIN_BENUTZER = "betreiber1";
 const char* ADMIN_PASSWORT = "Park2026!";
 
 const int PIN_SERVO_EINFAHRT = 8;  // GP8 = Pin 11
 const int PIN_SERVO_AUSFAHRT = 9;  // GP9 = Pin 12
+// true = der Ausfahrts-Servo hängt an Pico 1 (Aufbau laut README). Dann gilt die Ausfahrt nur als
+// offen, wenn Pico 1 den Befehl bestätigt hat (F-003).
+const bool AUSFAHRT_SERVO_AN_PICO1 = true;
 // Schranke zu = 90° (Mitte), offen = 0°. Dreht sie falsch herum, WINKEL_OFFEN auf 180 setzen.
 const int WINKEL_ZU = 90;
 const int WINKEL_OFFEN = 0;
@@ -471,11 +474,18 @@ void synchronisiere() {
   }
 }
 
-// Der Ausfahrts-Servo kann an Pico 2 (GP9) oder an Pico 1 (GP8) hängen: beide ansteuern
-void oeffneAusfahrt() {
+// Der Ausfahrts-Servo kann an Pico 2 (GP9) oder an Pico 1 (GP8) hängen.
+// Rückgabe false = Pico 1 hat den Öffnungsbefehl nicht bestätigt, die Schranke ist zu (F-003).
+bool oeffneAusfahrt() {
+  if (AUSFAHRT_SERVO_AN_PICO1) {
+    String antwort;
+    if (!pico1Anfrage("/api/schranke", antwort) || !antwort.startsWith("ok")) {
+      Serial.println("Ausfahrtsschranke: Pico 1 hat den Befehl nicht bestätigt");
+      return false;
+    }
+  }
   oeffne(schrankeAus);
-  String egal;
-  if (pico1Online()) pico1Anfrage("/api/schranke", egal);
+  return true;
 }
 
 // ---------- Admin-Login ----------
@@ -652,12 +662,17 @@ void aktionAusfahrt() {
   }
 
   if (wert(antwort, "status") == "bezahlt") {
+    // Zuerst öffnen, erst danach archivieren: geht der Befehl verloren, bleibt der Parkvorgang offen
+    if (!oeffneAusfahrt()) {
+      zeige(displayAus, MSG_SYSTEM_AUS, "err");
+      weiterleiten("/");
+      return;
+    }
     Parkvorgang p = offen[i];
     for (int k = i; k < anzahlOffen - 1; k++) offen[k] = offen[k + 1];
     anzahlOffen--;
     speichereOffen();
     archiviere(p, strtoul(wert(antwort, "bezahlt").c_str(), nullptr, 10), atol(wert(antwort, "rappen").c_str()));
-    oeffneAusfahrt();
     zeige(displayAus, "Gute Fahrt! Schranke offen.", "ok");
     String egal;
     pico1Anfrage("/api/ausfahrt?kz=" + urlEncode(kz), egal);
@@ -725,6 +740,9 @@ void seiteAdmin() {
   String msg = server.arg("msg");
   if (msg == "einfahrt") h += "<p class='msg'>Einfahrtsschranke manuell geöffnet.</p>";
   else if (msg == "ausfahrt") h += "<p class='msg'>Ausfahrtsschranke manuell geöffnet.</p>";
+  else if (msg == "ausfahrt-fehler")
+    h += "<p class='msg fehler'>Ausfahrtsschranke NICHT geöffnet: Die Kasse (Pico 1) antwortet nicht. "
+         "Schranke vor Ort von Hand öffnen.</p>";
   else if (msg == "reset") h += "<p class='msg'>System zurückgesetzt.</p>";
   else if (msg == "reset-teilweise")
     h += "<p class='msg fehler'>System zurückgesetzt, aber die Kasse (Pico 1) war nicht erreichbar.</p>";
@@ -790,9 +808,13 @@ void aktionManuellOeffnen() {
     protokolliere(ADMIN_BENUTZER, "manuelle Öffnung Einfahrt");
     weiterleiten("/admin?msg=einfahrt");
   } else if (schranke == "ausfahrt") {
-    oeffneAusfahrt();
-    protokolliere(ADMIN_BENUTZER, "manuelle Öffnung Ausfahrt");
-    weiterleiten("/admin?msg=ausfahrt");
+    if (oeffneAusfahrt()) {
+      protokolliere(ADMIN_BENUTZER, "manuelle Öffnung Ausfahrt");
+      weiterleiten("/admin?msg=ausfahrt");
+    } else {
+      protokolliere(ADMIN_BENUTZER, "manuelle Öffnung Ausfahrt fehlgeschlagen (Kasse nicht erreichbar)");
+      weiterleiten("/admin?msg=ausfahrt-fehler");
+    }
   } else {
     weiterleiten("/admin");
   }
